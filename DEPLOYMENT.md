@@ -10,17 +10,17 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| Họ và tên | (điền họ tên) |
-| Mã học viên | (điền mã học viên) |
-| Repo | (điền link repo K4-DAY12-...) |
+| Họ và tên | Đoàn Ngọc Linh |
+| Mã học viên | 2A202601762 |
+| Repo | https://github.com/ldoan23/K4-DAY12-2A202601762-DoanNgocLinh |
 
 ## Service
 
 | Mục | Nội dung |
 |-----|----------|
-| Public URL | https://TODO-thay-bang-url-that.up.railway.app |
-| Platform | Railway / Render / Cloud Run — (điền platform bạn dùng) |
-| Ngày deploy | (điền ngày) |
+| Public URL | https://day12-chat-rv51.onrender.com |
+| Platform | Render (Blueprint, đọc render.yaml) |
+| Ngày deploy | 2026-08-10 |
 
 ## Biến Môi Trường Đã Set Trên Cloud
 
@@ -30,7 +30,7 @@ Ghi tên biến và **nguồn giá trị**, không ghi giá trị:
 |------|--------|---------|
 | `PORT` | ✅ | platform tự gán |
 | `API_TOKEN` | ✅ | đặt trong dashboard, không nằm trong repo |
-| `REDIS_URL` | ✅ | (điền: Redis add-on của platform / Upstash / ...) |
+| `REDIS_URL` | ✅ | Render Key Value (day12-chat-redis), gắn tự động qua `fromService` trong render.yaml |
 | `BUCKET_CAPACITY` | ✅ | 10 |
 | `REFILL_PER_MINUTE` | ✅ | 10 |
 | `DAILY_BUDGET_USD` | ✅ | 1.0 |
@@ -42,18 +42,18 @@ Thay `<URL>` bằng Public URL ở trên:
 
 ```bash
 # 1. Liveness — mong đợi 200 {"status":"ok"}
-curl -i <URL>/healthz
+curl -i https://day12-chat-rv51.onrender.com/healthz
 
 # 2. Readiness — mong đợi 200 {"status":"ready"} (đã nối được Redis)
-curl -i <URL>/readyz
+curl -i https://day12-chat-rv51.onrender.com/readyz
 
 # 3. Không có token — mong đợi 401 kèm header WWW-Authenticate
-curl -i -X POST <URL>/chat \
+curl -i -X POST https://day12-chat-rv51.onrender.com/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"Hello"}'
 
 # 4. Có token — mong đợi 200 kèm câu trả lời
-curl -i -X POST <URL>/chat \
+curl -i -X POST https://day12-chat-rv51.onrender.com/chat \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_TOKEN" \
   -H "X-Client-Id: sv-test" \
@@ -61,7 +61,7 @@ curl -i -X POST <URL>/chat \
 
 # 5. Rate limit — gọi 15 lần, những lần cuối phải trả 429
 for i in $(seq 1 15); do
-  curl -s -o /dev/null -w "%{http_code} " -X POST <URL>/chat \
+  curl -s -o /dev/null -w "%{http_code} " -X POST https://day12-chat-rv51.onrender.com/chat \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $API_TOKEN" \
     -H "X-Client-Id: sv-test" \
@@ -71,32 +71,69 @@ done; echo
 
 ## Kết Quả Chạy Thật
 
-Dán output của các lệnh trên vào đây:
+> Máy tôi dùng Windows PowerShell — `curl.exe` trên PowerShell 5.1 làm hỏng
+> body chứa dấu `"` khi truyền cho chương trình native (lỗi đã biết của
+> PowerShell), nên lệnh 3–5 tôi chạy bằng `Invoke-WebRequest` thay vì
+> `curl.exe`, cùng URL và cùng ý nghĩa kiểm tra.
+
+**1. Liveness — `GET /healthz`**
 
 ```
-(điền output)
+HTTP/1.1 200 OK
+{"status":"ok","service":"day12-chat-service","version":"1.0.0"}
+```
+
+**2. Readiness — `GET /readyz`** (chứng minh đã nối được Redis trên cloud)
+
+```
+HTTP/1.1 200 OK
+{"status":"ready","redis":true}
+```
+
+**3. `POST /chat` không có token** — mong đợi 401
+
+```
+Status: 401
+WWW-Authenticate: Bearer
+```
+
+**4. `POST /chat` có token thật** — mong đợi 200 kèm câu trả lời
+
+```
+StatusCode: 200
+Content: {"reply":"...","client_id":"sv-test","turns_before":12,"usd_cost":6.8e-05,...}
+```
+
+(chuỗi "reply" hiển thị lỗi font tiếng Việt trên console PowerShell do khác
+bảng mã hiển thị — không phải lỗi dữ liệu; `turns_before: 12` cho thấy lịch
+sử hội thoại của `sv-test` được lưu đúng qua Redis, không mất giữa các lần gọi)
+
+**5. Rate limit — gọi 15 lần liên tiếp**
+
+```
+200 200 200 200 200 200 200 200 200 200 429 429 429 429 429
+```
+
+10 request đầu (đúng bằng `BUCKET_CAPACITY=10`) trả 200, 5 request cuối trả
+429 khi xô hết token — token bucket hoạt động đúng trên bản deploy thật.
+
+**6. Kết quả toàn bộ `pytest tests/test_cp5.py -v`**
+
+```
+9 passed, 4 skipped
+(4 test skip thuộc TestLocalFallback — chỉ chạy khi LOCAL_FALLBACK=true,
+không áp dụng vì repo này đã deploy thật lên Render)
 ```
 
 ## Ảnh Chụp Màn Hình
 
-Đặt ảnh trong thư mục `screenshots/`:
+| Ảnh | Nội dung |
+|---|---|
+| [`screenshots/dashboard.png`](screenshots/dashboard.png) | Dashboard Render — service `day12-chat` đang **Live**, log `GET /healthz 200 OK` |
+| [`screenshots/healthz.png`](screenshots/healthz.png) | Gọi trực tiếp `/healthz` trên trình duyệt — `{"status":"ok",...}` |
 
-- `screenshots/dashboard.png` — trang quản lý service trên platform
-- `screenshots/healthz.png` — kết quả gọi `/healthz` từ trình duyệt hoặc curl
+![Dashboard Render](screenshots/dashboard.png)
 
----
+![Kết quả /healthz](screenshots/healthz.png)
 
-## Nếu Dùng Phương Án Dự Phòng
-
-Không đăng ký được tài khoản cloud? Vẫn nộp được bài, nhưng CP5 tối đa 60% điểm:
-
-1. Đặt `LOCAL_FALLBACK=true` trong `.env`
-2. Chạy `docker compose up -d` rồi kiểm tra `docker compose ps`
-3. Chụp màn hình vào `screenshots/`
-4. Chạy `pytest tests/test_cp5.py -v` — bộ test sẽ tự chuyển sang kiểm tra
-   `http://localhost:8000`
-5. Ghi rõ lý do không deploy được vào phần dưới đây:
-
-```
-(điền lý do nếu dùng phương án dự phòng, ngược lại xóa mục này)
-```
+Không dùng phương án dự phòng — đã deploy thật lên Render (xem mục Service ở trên).
